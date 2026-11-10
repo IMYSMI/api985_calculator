@@ -3,165 +3,214 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API RP 985 Thermal Calculator</title>
+  <title>API RP 985 Calculator</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js for the visual temperature profile chart matching app2.py Altair output -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .max-container { max-width: 760px; }
+  </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans min-h-screen">
-  <!-- Header -->
-  <header class="bg-slate-900 text-white py-5 px-6 shadow-md">
-    <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-      <div>
-        <h1 class="text-xl md:text-2xl font-bold flex items-center gap-2">
-          🔥 API RP 985 Refractory Heat Loss & Shell Temperature Calculator
-        </h1>
-        <p class="text-slate-400 text-xs md:text-sm mt-0.5">
-          Steady-State 1D Conduction & Surface Convection/Radiation Solver (API RP 985, 1st Ed.)
-        </p>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen p-3 md:p-6 flex flex-col items-center">
+  <div class="w-full max-container space-y-4">
+
+    <!-- Header -->
+    <header class="pt-1">
+      <h1 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+        🔥 Refractory Shell Temperature
+      </h1>
+      <p class="text-xs md:text-sm text-slate-500 font-medium">
+        API RP 985 steady-state heat loss calculator
+      </p>
+    </header>
+
+    <!-- Error Banner -->
+    <div id="errorBox" class="hidden bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-xl text-xs font-semibold"></div>
+
+    <!-- Hero Card (Dynamic color matching app2.py) -->
+    <div id="heroCard" class="rounded-2xl p-5 text-white shadow-sm transition-all duration-300">
+      <div class="text-[0.72rem] tracking-wider uppercase opacity-90 font-bold">Predicted Shell Temperature</div>
+      <div id="heroTemp" class="text-5xl font-black leading-tight tracking-tight mt-0.5">-- °F</div>
+      <div id="heroSub" class="text-xs opacity-95 mt-1 font-medium">--</div>
+    </div>
+
+    <!-- 2x2 Metric Grid -->
+    <div class="grid grid-cols-2 gap-2.5">
+      <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
+        <div class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Heat Loss</div>
+        <div id="kpiQ" class="text-xl font-extrabold text-slate-800 mt-0.5">--</div>
+        <div class="text-[0.68rem] text-slate-400">Btu / (h·ft²)</div>
       </div>
-      <span class="inline-block bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 text-xs font-medium px-3 py-1 rounded-full self-start md:self-auto">
-        ✓ 20/20 Annex A.3 Cases Verified
-      </span>
+      <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
+        <div id="kpi3Title" class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Lining Thickness</div>
+        <div id="kpi3Val" class="text-xl font-extrabold text-slate-800 mt-0.5">--</div>
+        <div id="kpi3Unit" class="text-[0.68rem] text-slate-400">inches</div>
+      </div>
+      <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
+        <div class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Outer Film h</div>
+        <div id="kpiH" class="text-xl font-extrabold text-slate-800 mt-0.5">--</div>
+        <div class="text-[0.68rem] text-slate-400">Btu / (h·ft²·°F)</div>
+      </div>
+      <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
+        <div class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Radiation / Convection</div>
+        <div id="kpiHrHc" class="text-xl font-extrabold text-slate-800 mt-0.5">-- / --</div>
+        <div class="text-[0.68rem] text-slate-400">Btu / (h·ft²·°F)</div>
+      </div>
     </div>
-  </header>
 
-  <main class="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
-    <!-- Top Benchmark Selector -->
-    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-      <label class="block text-sm font-semibold text-slate-700 mb-2">
-        📌 Quick-Load Official API RP 985 Benchmark Case (Table A.8) or Customize Below:
-      </label>
-      <select id="presetSelect" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-600"></select>
+    <!-- Temperature Profile Chart -->
+    <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+      <h3 class="text-sm font-bold text-slate-800 mb-3">Temperature through the lining</h3>
+      <div class="h-64 relative w-full">
+        <canvas id="tempChart"></canvas>
+      </div>
     </div>
 
-    <!-- Main Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <!-- Left Column: Inputs -->
-      <div class="lg:col-span-4 space-y-5 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-        <h2 class="text-base font-bold text-slate-900 border-b pb-2">1. Equipment & Geometry</h2>
+    <!-- Layers List -->
+    <div>
+      <h3 class="text-sm font-bold text-slate-800 mb-2">Layers</h3>
+      <div id="layerCards" class="space-y-2"></div>
+    </div>
+
+    <!-- Temperature Drop Distribution Bar -->
+    <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+      <h3 class="text-sm font-bold text-slate-800 mb-2">Where the temperature drop happens</h3>
+      <div id="stackBar" class="flex h-7 rounded-lg overflow-hidden my-2 border border-slate-200/60"></div>
+      <div id="stackLegend" class="flex flex-wrap gap-x-3.5 gap-y-1.5 text-[0.72rem] text-slate-600 mt-2 font-medium"></div>
+    </div>
+
+    <!-- Benchmark Target Check Badge -->
+    <div id="benchmarkCheck" class="text-center text-xs font-medium text-slate-500 py-1"></div>
+
+    <!-- Inputs Expander / Accordion matching app2.py -->
+    <details class="group bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden" open>
+      <summary class="flex justify-between items-center px-4 py-3 cursor-pointer select-none font-bold text-sm text-slate-800">
+        <span>⚙️ Inputs</span>
+        <span class="text-slate-400 text-xs transition-transform group-open:rotate-180">▼</span>
+      </summary>
+
+      <div class="p-4 pt-1 space-y-4 border-t border-slate-100">
+        <!-- Preset dropdown -->
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">Equipment Orientation</label>
-          <select id="geom" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="hcyl">Horizontal Cylinder</option>
-            <option value="vcyl">Vertical Cylinder</option>
-            <option value="wall">Vertical Flat Wall</option>
-            <option value="roof">Horizontal Roof (Heat Flow Up)</option>
-            <option value="floor">Horizontal Floor (Heat Flow Down)</option>
-            <option value="sphere">Spherical Vessel</option>
-          </select>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Start from a benchmark case</label>
+          <select id="presetSelect" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-amber-500"></select>
         </div>
 
-        <div id="dimInputs" class="grid grid-cols-2 gap-3"></div>
-
-        <h2 class="text-base font-bold text-slate-900 border-b pb-2 pt-2">2. Refractory Lining (Table A.7)</h2>
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">Lining System</label>
-          <select id="lining" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="1">Lining 1 (1 Layer: Castable X)</option>
-            <option value="2">Lining 2 (1 Layer: Castable Y)</option>
-            <option value="3">Lining 3 (2 Layers: Cast Z + Insul.)</option>
-            <option value="4">Lining 4 (3 Layers: Cast Z + Insul. + Board)</option>
-            <option value="5">Lining 5 (3 Layers: Extended Range 2500°F)</option>
-          </select>
+        <!-- Mobile-friendly tab controls -->
+        <div class="flex border-b border-slate-200 text-xs font-bold text-slate-600">
+          <button id="tabBtnShape" class="tab-btn px-4 py-2 border-b-2 border-amber-600 text-amber-600" onclick="switchTab('shape')">📐 Shape</button>
+          <button id="tabBtnLining" class="tab-btn px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800" onclick="switchTab('lining')">🧱 Lining</button>
+          <button id="tabBtnCond" class="tab-btn px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800" onclick="switchTab('cond')">🌡️ Conditions</button>
         </div>
 
-        <div id="layerInputs" class="space-y-2"></div>
+        <!-- Tab 1: Shape -->
+        <div id="tabShape" class="tab-content space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Equipment type</label>
+            <select id="geom" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm">
+              <option value="hcyl">Horizontal cylinder</option>
+              <option value="vcyl">Vertical cylinder</option>
+              <option value="wall">Vertical wall</option>
+              <option value="roof">Roof (heat flows up)</option>
+              <option value="floor">Floor (heat flows down)</option>
+              <option value="sphere">Sphere</option>
+            </select>
+          </div>
+          <div id="dimFields" class="grid grid-cols-2 gap-3"></div>
+        </div>
 
-        <h2 class="text-base font-bold text-slate-900 border-b pb-2 pt-2">3. Operating & Ambient Conditions</h2>
-        <div class="grid grid-cols-2 gap-3">
+        <!-- Tab 2: Lining -->
+        <div id="tabLining" class="tab-content hidden space-y-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Hot Face Temp (°F)</label>
-            <input id="t1" type="number" step="25" value="2000" class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Lining system</label>
+            <select id="lining" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm">
+              <option value="1">Lining 1 · 1 layer (Castable X)</option>
+              <option value="2">Lining 2 · 1 layer (Castable Y)</option>
+              <option value="3">Lining 3 · 2 layers (Castable Z + Insulating Cast)</option>
+              <option value="4">Lining 4 · 3 layers (Castable Z + Insul. Cast + Board)</option>
+              <option value="5">Lining 5 · 3 layers (extended to 2500 °F)</option>
+            </select>
+          </div>
+          <div id="layerFields" class="space-y-2"></div>
+        </div>
+
+        <!-- Tab 3: Conditions -->
+        <div id="tabCond" class="tab-content hidden grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Hot face temp (°F)</label>
+            <input id="t1" type="number" step="25" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Ambient Temp (°F)</label>
-            <input id="t0" type="number" step="5" value="100" class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Ambient temp (°F)</label>
+            <input id="t0" type="number" step="5" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Wind Speed (mph)</label>
-            <input id="wind" type="number" min="0" step="1" value="0" class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Wind speed (mph)</label>
+            <input id="wind" type="number" step="1" min="0" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Shell Emissivity (ε)</label>
-            <input id="eps" type="number" min="0.05" max="1.0" step="0.05" value="0.8" class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Shell emissivity (ε)</label>
+            <input id="eps" type="number" step="0.05" min="0.05" max="1" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
           </div>
         </div>
       </div>
+    </details>
 
-      <!-- Right Column: Results -->
-      <div class="lg:col-span-8 space-y-5">
-        <!-- Error Box -->
-        <div id="errorBox" class="hidden bg-red-50 border border-red-300 text-red-700 px-4 py-3 rounded-xl text-sm font-medium"></div>
-
-        <!-- Benchmark Badge -->
-        <div id="benchmarkBadge" class="hidden bg-emerald-50 border border-emerald-300 text-emerald-800 px-4 py-3 rounded-xl text-sm"></div>
-
-        <!-- KPI Cards -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <div class="text-xs font-semibold text-slate-500 uppercase">Predicted Shell Temp</div>
-            <div id="kpiTs" class="text-2xl font-bold text-slate-900 mt-1">-- °F</div>
-            <div id="kpiTsSub" class="text-xs text-slate-500 mt-1">--</div>
-          </div>
-          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <div class="text-xs font-semibold text-slate-500 uppercase">Surface Heat Loss (q)</div>
-            <div id="kpiQ" class="text-2xl font-bold text-blue-600 mt-1">--</div>
-            <div class="text-xs text-slate-500 mt-1">Btu / (h·ft²)</div>
-          </div>
-          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <div id="kpi3Title" class="text-xs font-semibold text-slate-500 uppercase">Linear Pipe Loss (qp)</div>
-            <div id="kpi3Val" class="text-2xl font-bold text-slate-900 mt-1">--</div>
-            <div id="kpi3Sub" class="text-xs text-slate-500 mt-1">Btu / (h·ft)</div>
-          </div>
-          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <div class="text-xs font-semibold text-slate-500 uppercase">Outer Conductance (h)</div>
-            <div id="kpiH" class="text-2xl font-bold text-slate-900 mt-1">--</div>
-            <div id="kpiHSub" class="text-xs text-slate-500 mt-1">Btu / (h·ft²·°F)</div>
-          </div>
-        </div>
-
-        <!-- Layer Table -->
-        <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-            <h3 class="text-base font-bold text-slate-900">Refractory Layer-by-Layer Thermal Profile (Sec. 5.5)</h3>
-            <button id="downloadCsvBtn" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition self-start sm:self-auto">
-              📥 Export CSV Report
-            </button>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr class="border-b border-slate-200 text-xs uppercase text-slate-500 bg-slate-50">
-                  <th class="py-2.5 px-3">Layer</th>
-                  <th class="py-2.5 px-3">Material</th>
-                  <th class="py-2.5 px-3">Thick (in.)</th>
-                  <th class="py-2.5 px-3">Hot Side (°F)</th>
-                  <th class="py-2.5 px-3">Cold Side (°F)</th>
-                  <th class="py-2.5 px-3">Mean (°F)</th>
-                  <th class="py-2.5 px-3">k_eff</th>
-                  <th class="py-2.5 px-3">R (h·ft²·°F/Btu)</th>
-                </tr>
-              </thead>
-              <tbody id="layerTableBody" class="divide-y divide-slate-200"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
+    <footer class="text-center text-[0.7rem] text-slate-400 pb-8">
+      API RP 985 Calculator · GitHub Pages Free Static Deployment
+    </footer>
+  </div>
 
   <script>
     const SIGMA = 0.1714e-8;
     const G = 32.174 * 3600 * 3600;
+    const PALETTE = ["#e4572e", "#f3a712", "#5b9bd5", "#7a8b99"];
 
-    // Exact cubic polynomial coefficients [d, c, b, a] for k(t) = a + b*t + c*t^2 + d*t^3 (Eq. 18)
-    // Pre-regressed from API RP 985 Table A.7 data points
+    const Z = [[500, 23.60], [1000, 14.85], [1500, 14.13], [2000, 15.61]];
+    const IC = [[500, 3.32], [1000, 3.02], [1500, 3.24], [2000, 3.60]];
+    const IB = [[500, 0.57], [1000, 0.80], [1500, 1.13], [2000, 1.60]];
+
+    const LININGS = {
+      1: ["Lining 1 · 1 layer (Castable X)", [["Castable X", 6.0, [[0, 4.0]]]]],
+      2: ["Lining 2 · 1 layer (Castable Y)", [["Castable Y", 6.0, [[500, 0.25], [1000, 0.50], [1500, 1.0], [2000, 2.0]]]]],
+      3: ["Lining 3 · 2 layers (Castable Z + Insulating Cast)", [["Castable Z", 6.0, Z], ["Insulating Cast", 4.0, IC]]],
+      4: ["Lining 4 · 3 layers (Castable Z + Insul. Cast + Board)", [["Castable Z", 6.0, Z], ["Insulating Cast", 4.0, IC], ["Insulation board", 1.5, IB]]],
+      5: ["Lining 5 · 3 layers (extended to 2500 °F)", [
+        ["Castable Z ext", 6.0, [[500, 23.60], [1000, 14.85], [2000, 15.61], [2500, 19.0]]],
+        ["Insulating Cast ext", 4.0, [[0, 4.05], [1000, 3.02], [2000, 3.60], [2500, 4.0]]],
+        ["Insulation board ext", 1.5, [[0, 0.36], [500, 0.57], [1000, 0.80], [2000, 1.60]]]
+      ]]
+    };
+
+    const PRESETS = [
+      { name: "Custom input", custom: true },
+      { name: "Case 1: Horiz. Cylinder | Lining 1 | 0 mph", geom: "hcyl", d: { D: 8.0 }, lin: 1, th: [6.0], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 413, expQ: 991 },
+      { name: "Case 2: Horiz. Cylinder | Lining 1 | 10 mph", geom: "hcyl", d: { D: 8.0 }, lin: 1, th: [6.0], eps: 0.8, t0: 100.0, wind: 10.0, t1: 2000.0, expTs: 385, expQ: 1008 },
+      { name: "Case 3: Horiz. Cylinder | Lining 1 | -5 °F", geom: "hcyl", d: { D: 8.0 }, lin: 1, th: [6.0], eps: 0.8, t0: -5.0, wind: 10.0, t1: 2000.0, expTs: 330, expQ: 1042 },
+      { name: "Case 4: Horiz. Cylinder | Lining 2 (variable k)", geom: "hcyl", d: { D: 8.0 }, lin: 2, th: [6.0], eps: 0.8, t0: -5.0, wind: 10.0, t1: 2000.0, expTs: 78, expQ: 208 },
+      { name: "Case 5: Vert. Cylinder | Lining 2 | 0 mph", geom: "vcyl", d: { D: 6.0, h: 30.0 }, lin: 2, th: [6.0], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 198, expQ: 201 },
+      { name: "Case 6: Vert. Cylinder | Lining 3", geom: "vcyl", d: { D: 6.0, h: 30.0 }, lin: 3, th: [6.0, 4.0], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 388, expQ: 873 },
+      { name: "Case 7: Vert. Cylinder | Lining 4", geom: "vcyl", d: { D: 6.0, h: 30.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 272, expQ: 419 },
+      { name: "Case 8: Vert. Cylinder | Lining 5 | 2500 °F", geom: "vcyl", d: { D: 30.0, h: 8.0 }, lin: 5, th: [6.0, 4.0, 1.5], eps: 0.8, t0: -5.0, wind: 10.0, t1: 2500.0, expTs: 235, expQ: 649 },
+      { name: "Case 9: Vertical Wall (30x6 ft) | Lining 4", geom: "wall", d: { h: 30.0, l: 6.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 283, expQ: 457 },
+      { name: "Case 10: Vertical Wall (6x30 ft) | Lining 4", geom: "wall", d: { h: 6.0, l: 30.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 281, expQ: 458 },
+      { name: "Case 11: Vertical Wall | Lining 4 | -5 °F, 10 mph", geom: "wall", d: { h: 6.0, l: 30.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: -5.0, wind: 10.0, t1: 2000.0, expTs: 161, expQ: 475 },
+      { name: "Case 12: Vertical Wall | Lining 5 | ε 0.15", geom: "wall", d: { h: 6.0, l: 30.0 }, lin: 5, th: [6.0, 4.0, 1.5], eps: 0.15, t0: -5.0, wind: 10.0, t1: 2500.0, expTs: 302, expQ: 651 },
+      { name: "Case 13: Roof (6x30 ft) | Lining 4 | 0 mph", geom: "roof", d: { l: 6.0, w: 30.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 267, expQ: 460 },
+      { name: "Case 14: Roof (30x6 ft) | Lining 4 | 0 mph", geom: "roof", d: { l: 30.0, w: 6.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 267, expQ: 460 },
+      { name: "Case 15: Roof | Lining 4 | -5 °F, 10 mph", geom: "roof", d: { l: 30.0, w: 6.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: -5.0, wind: 10.0, t1: 2000.0, expTs: 158, expQ: 476 },
+      { name: "Case 16: Roof | Lining 5 | 2500 °F, ε 0.15", geom: "roof", d: { l: 30.0, w: 6.0 }, lin: 5, th: [6.0, 4.0, 1.5], eps: 0.15, t0: -5.0, wind: 10.0, t1: 2500.0, expTs: 285, expQ: 654 },
+      { name: "Case 17: Floor (6x30 ft) | Lining 4 | 0 mph", geom: "floor", d: { l: 6.0, w: 30.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 317, expQ: 452 },
+      { name: "Case 18: Floor (30x6 ft) | Lining 4 | 0 mph", geom: "floor", d: { l: 30.0, w: 6.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: 100.0, wind: 0.0, t1: 2000.0, expTs: 317, expQ: 452 },
+      { name: "Case 19: Floor | Lining 4 | -5 °F, 10 mph", geom: "floor", d: { l: 30.0, w: 6.0 }, lin: 4, th: [6.0, 4.0, 1.5], eps: 0.8, t0: -5.0, wind: 10.0, t1: 2000.0, expTs: 167, expQ: 475 },
+      { name: "Case 20: Floor | Lining 5 | 2500 °F, ε 0.15", geom: "floor", d: { l: 30.0, w: 6.0 }, lin: 5, th: [6.0, 4.0, 1.5], eps: 0.15, t0: -5.0, wind: 10.0, t1: 2500.0, expTs: 332, expQ: 647 }
+    ];
+
     function fitCubic(pts) {
-      if (pts.length === 1) return [0, 0, 0, pts[0][1]];
-      // Exact Lagrange / Vandermonde 4-point cubic solver
+      if (pts.length === 1) return [pts[0][1], 0, 0, 0];
       const n = pts.length;
       const A = pts.map(([t]) => [1, t, t * t, t * t * t].slice(0, n));
       const B = pts.map(([, k]) => k);
-      // Gaussian elimination
       for (let i = 0; i < n; i++) {
         let maxRow = i;
         for (let k = i + 1; k < n; k++) if (Math.abs(A[k][i]) > Math.abs(A[maxRow][i])) maxRow = k;
@@ -181,45 +230,6 @@
       while (x.length < 4) x.push(0);
       return x; // [a, b, c, d]
     }
-
-    const Z = [[500, 23.60], [1000, 14.85], [1500, 14.13], [2000, 15.61]];
-    const IC = [[500, 3.32], [1000, 3.02], [1500, 3.24], [2000, 3.60]];
-    const IB = [[500, 0.57], [1000, 0.80], [1500, 1.13], [2000, 1.60]];
-
-    const LININGS = {
-      1: [["Castable X", 6.0, [[0, 4.0]]]],
-      2: [["Castable Y", 6.0, [[500, 0.25], [1000, 0.50], [1500, 1.0], [2000, 2.0]]]],
-      3: [["Castable Z", 6.0, Z], ["Insulating Cast", 4.0, IC]],
-      4: [["Castable Z", 6.0, Z], ["Insulating Cast", 4.0, IC], ["Insulation board", 1.5, IB]],
-      5: [
-        ["Castable Z ext", 6.0, [[500, 23.60], [1000, 14.85], [2000, 15.61], [2500, 19.0]]],
-        ["Insulating Cast ext", 4.0, [[0, 4.05], [1000, 3.02], [2000, 3.60], [2500, 4.0]]],
-        ["Insulation board ext", 1.5, [[0, 0.36], [500, 0.57], [1000, 0.80], [2000, 1.60]]]
-      ]
-    };
-
-    const PRESETS = [
-      { name: "Case 1: Horiz. Cylinder | Lining 1 | 0 mph Wind", geom: "hcyl", d: { D: 8 }, lin: 1, th: [6], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 413, expQ: 991 },
-      { name: "Case 2: Horiz. Cylinder | Lining 1 | 10 mph Wind", geom: "hcyl", d: { D: 8 }, lin: 1, th: [6], eps: 0.8, t0: 100, wind: 10, t1: 2000, expTs: 385, expQ: 1008 },
-      { name: "Case 3: Horiz. Cylinder | Lining 1 | -5 °F Ambient", geom: "hcyl", d: { D: 8 }, lin: 1, th: [6], eps: 0.8, t0: -5, wind: 10, t1: 2000, expTs: 330, expQ: 1042 },
-      { name: "Case 4: Horiz. Cylinder | Lining 2 (Variable k)", geom: "hcyl", d: { D: 8 }, lin: 2, th: [6], eps: 0.8, t0: -5, wind: 10, t1: 2000, expTs: 78, expQ: 208 },
-      { name: "Case 5: Vert. Cylinder | Lining 2 | 0 mph Wind", geom: "vcyl", d: { D: 6, h: 30 }, lin: 2, th: [6], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 198, expQ: 201 },
-      { name: "Case 6: Vert. Cylinder | Lining 3 (2-Layer)", geom: "vcyl", d: { D: 6, h: 30 }, lin: 3, th: [6, 4], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 388, expQ: 873 },
-      { name: "Case 7: Vert. Cylinder | Lining 4 (3-Layer)", geom: "vcyl", d: { D: 6, h: 30 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 272, expQ: 419 },
-      { name: "Case 8: Vert. Cylinder | Lining 5 | 2500 °F Hot Face", geom: "vcyl", d: { D: 30, h: 8 }, lin: 5, th: [6, 4, 1.5], eps: 0.8, t0: -5, wind: 10, t1: 2500, expTs: 235, expQ: 649 },
-      { name: "Case 9: Vertical Wall (30x6 ft) | Lining 4", geom: "wall", d: { h: 30, l: 6 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 283, expQ: 457 },
-      { name: "Case 10: Vertical Wall (6x30 ft) | Lining 4", geom: "wall", d: { h: 6, l: 30 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 281, expQ: 458 },
-      { name: "Case 11: Vertical Wall | Lining 4 | -5 °F, 10 mph", geom: "wall", d: { h: 6, l: 30 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: -5, wind: 10, t1: 2000, expTs: 161, expQ: 475 },
-      { name: "Case 12: Vertical Wall | Lining 5 | Low Emissivity (0.15)", geom: "wall", d: { h: 6, l: 30 }, lin: 5, th: [6, 4, 1.5], eps: 0.15, t0: -5, wind: 10, t1: 2500, expTs: 302, expQ: 651 },
-      { name: "Case 13: Roof (6x30 ft) | Lining 4 | 0 mph", geom: "roof", d: { l: 6, w: 30 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 267, expQ: 460 },
-      { name: "Case 14: Roof (30x6 ft) | Lining 4 | 0 mph", geom: "roof", d: { l: 30, w: 6 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 267, expQ: 460 },
-      { name: "Case 15: Roof | Lining 4 | -5 °F, 10 mph", geom: "roof", d: { l: 30, w: 6 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: -5, wind: 10, t1: 2000, expTs: 158, expQ: 476 },
-      { name: "Case 16: Roof | Lining 5 | 2500 °F, Low Emissivity", geom: "roof", d: { l: 30, w: 6 }, lin: 5, th: [6, 4, 1.5], eps: 0.15, t0: -5, wind: 10, t1: 2500, expTs: 285, expQ: 654 },
-      { name: "Case 17: Floor (6x30 ft) | Lining 4 | 0 mph", geom: "floor", d: { l: 6, w: 30 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 317, expQ: 452 },
-      { name: "Case 18: Floor (30x6 ft) | Lining 4 | 0 mph", geom: "floor", d: { l: 30, w: 6 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: 100, wind: 0, t1: 2000, expTs: 317, expQ: 452 },
-      { name: "Case 19: Floor | Lining 4 | -5 °F, 10 mph", geom: "floor", d: { l: 30, w: 6 }, lin: 4, th: [6, 4, 1.5], eps: 0.8, t0: -5, wind: 10, t1: 2000, expTs: 167, expQ: 475 },
-      { name: "Case 20: Floor | Lining 5 | 2500 °F, Low Emissivity", geom: "floor", d: { l: 30, w: 6 }, lin: 5, th: [6, 4, 1.5], eps: 0.15, t0: -5, wind: 10, t1: 2500, expTs: 332, expQ: 647 }
-    ];
 
     function kEff(coeffs, t1, t2) {
       const [a, b, c, d] = coeffs;
@@ -246,7 +256,7 @@
       const { kf, nu, pr, cp, rho, beta } = air(0.5 * (ts + t0));
       const dT = Math.abs(Ts - To);
       const V = Math.max(wind, 0) * 5280;
-      const Ra = (L) => (G * beta * rho * cp * dT * L ** 3) / (nu * kf);
+      const Ra = (L) => (G * beta * rho * cp * dT * (L ** 3)) / (nu * kf);
 
       let Ln, Nun;
       if (geom === "wall" || geom === "vcyl") {
@@ -297,12 +307,36 @@
       return { hTot: hr + hc, hr, hc };
     }
 
-    // UI Wiring
+    // Chart.js background colored band plugin to replicate app2.py Altair mark_rect
+    const layerBandsPlugin = {
+      id: "layerBands",
+      beforeDraw(chart) {
+        if (!chart.config.options.customBands) return;
+        const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+        const bands = chart.config.options.customBands;
+        ctx.save();
+        bands.forEach(b => {
+          const xStart = x.getPixelForValue(b.x0);
+          const xEnd = x.getPixelForValue(b.x1);
+          ctx.fillStyle = b.color;
+          ctx.fillRect(xStart, top, xEnd - xStart, bottom - top);
+        });
+        ctx.restore();
+      }
+    };
+    Chart.register(layerBandsPlugin);
+
+    // State
+    let currentDims = { D: 8.0, h: 30.0, l: 30.0, w: 6.0 };
+    let currentThick = [6.0];
+    let chartInstance = null;
+    let currentPreset = null;
+
     const presetSelect = document.getElementById("presetSelect");
     const geomSelect = document.getElementById("geom");
     const liningSelect = document.getElementById("lining");
-    const dimInputs = document.getElementById("dimInputs");
-    const layerInputs = document.getElementById("layerInputs");
+    const dimFields = document.getElementById("dimFields");
+    const layerFields = document.getElementById("layerFields");
 
     PRESETS.forEach((p, idx) => {
       const opt = document.createElement("option");
@@ -311,55 +345,69 @@
       presetSelect.appendChild(opt);
     });
 
-    let currentDims = { D: 8, h: 30, l: 30, w: 6 };
-    let currentThick = [6];
-    let lastReportRows = [];
+    window.switchTab = function(tab) {
+      ["shape", "lining", "cond"].forEach(t => {
+        const isTarget = t === tab;
+        document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}`).classList.toggle("hidden", !isTarget);
+        const btn = document.getElementById(`tabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (isTarget) {
+          btn.className = "tab-btn px-4 py-2 border-b-2 border-amber-600 text-amber-600 font-bold";
+        } else {
+          btn.className = "tab-btn px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold";
+        }
+      });
+    };
 
     function renderDimInputs() {
       const g = geomSelect.value;
-      dimInputs.innerHTML = "";
+      dimFields.innerHTML = "";
       const fields = [];
-      if (["hcyl", "vcyl", "sphere"].includes(g)) fields.push(["D", "Steel ID (ft)"]);
-      if (["vcyl", "wall"].includes(g)) fields.push(["h", "Steel Height (ft)"]);
-      if (["wall", "roof", "floor"].includes(g)) fields.push(["l", "Length in Wind Dir (ft)"]);
-      if (["roof", "floor"].includes(g)) fields.push(["w", "Steel Width (ft)"]);
+      if (["hcyl", "vcyl", "sphere"].includes(g)) fields.push(["D", "Shell ID (ft)"]);
+      if (["vcyl", "wall"].includes(g)) fields.push(["h", "Height (ft)"]);
+      if (["wall", "roof", "floor"].includes(g)) fields.push(["l", "Length in wind dir (ft)"]);
+      if (["roof", "floor"].includes(g)) fields.push(["w", "Width (ft)"]);
 
       fields.forEach(([key, label]) => {
         const div = document.createElement("div");
         div.innerHTML = `
           <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
           <input type="number" step="0.5" min="0.5" value="${currentDims[key]}" data-dim="${key}"
-            class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+            class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
         `;
         div.querySelector("input").addEventListener("input", (e) => {
           currentDims[key] = parseFloat(e.target.value) || 1;
           calculate();
         });
-        dimInputs.appendChild(div);
+        dimFields.appendChild(div);
       });
     }
 
     function renderLayerInputs(customThicks = null) {
-      const layers = LININGS[liningSelect.value];
-      currentThick = customThicks ? [...customThicks] : layers.map((l) => l[1]);
-      layerInputs.innerHTML = "";
+      const [, layers] = LININGS[liningSelect.value];
+      currentThick = customThicks ? [...customThicks] : layers.map(l => l[1]);
+      layerFields.innerHTML = "";
       layers.forEach(([name], i) => {
         const div = document.createElement("div");
         div.innerHTML = `
-          <label class="block text-xs font-semibold text-slate-600 mb-1">Layer ${i + 1}: ${name} (in.)</label>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">${i + 1}. ${name} thickness (in.)</label>
           <input type="number" step="0.5" min="0.1" value="${currentThick[i]}"
-            class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+            class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
         `;
         div.querySelector("input").addEventListener("input", (e) => {
           currentThick[i] = parseFloat(e.target.value) || 0.1;
           calculate();
         });
-        layerInputs.appendChild(div);
+        layerFields.appendChild(div);
       });
     }
 
     function loadPreset(idx) {
       const p = PRESETS[idx];
+      currentPreset = p;
+      if (p.custom) {
+        calculate();
+        return;
+      }
       geomSelect.value = p.geom;
       currentDims = { ...currentDims, ...p.d };
       liningSelect.value = p.lin;
@@ -369,18 +417,69 @@
       document.getElementById("t1").value = p.t1;
       renderDimInputs();
       renderLayerInputs(p.th);
-      calculate(p);
+      calculate();
     }
 
-    function calculate(activePreset = null) {
+    function updateChart(edges, tProf, layerNames, t0, t1, ts) {
+      const bands = layerNames.map((name, i) => ({
+        x0: edges[i],
+        x1: edges[i + 1],
+        color: `${PALETTE[i % PALETTE.length]}33` // 20% opacity
+      }));
+
+      const points = edges.map((x, i) => ({ x, y: Math.round(tProf[i]) }));
+
+      if (chartInstance) chartInstance.destroy();
+
+      const ctx = document.getElementById("tempChart").getContext("2d");
+      chartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+          datasets: [{
+            data: points,
+            borderColor: "#d62728",
+            borderWidth: 3,
+            pointBackgroundColor: "#d62728",
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            fill: false,
+            tension: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          customBands: bands,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `Depth: ${ctx.parsed.x.toFixed(1)}" · Temp: ${ctx.parsed.y} °F`
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: "linear",
+              title: { display: true, text: "Distance from hot face (in.)", font: { size: 11 } },
+              grid: { display: false }
+            },
+            y: {
+              title: { display: true, text: "Temperature (°F)", font: { size: 11 } },
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    }
+
+    function calculate() {
       const errorBox = document.getElementById("errorBox");
-      const badge = document.getElementById("benchmarkBadge");
       errorBox.classList.add("hidden");
-      badge.classList.add("hidden");
 
       const geom = geomSelect.value;
       const linId = liningSelect.value;
-      const layers = LININGS[linId];
+      const [, layers] = LININGS[linId];
       const polys = layers.map(([, , pts]) => fitCubic(pts));
       const n = polys.length;
 
@@ -391,28 +490,29 @@
 
       const totalThick = currentThick.reduce((a, b) => a + b, 0);
       if (["hcyl", "vcyl", "sphere"].includes(geom) && totalThick >= currentDims.D * 6) {
-        errorBox.textContent = `⚠️ Geometry Error: Total refractory thickness (${totalThick} in.) must be less than Steel Shell Inner Radius (${currentDims.D * 6} in.).`;
+        errorBox.textContent = `⚠️ Geometry Error: Total refractory thickness (${totalThick.toFixed(1)} in.) exceeds vessel inner radius (${currentDims.D * 6} in.).`;
         errorBox.classList.remove("hidden");
         return;
       }
 
       const x = [0];
       currentThick.forEach((th) => x.push(x[x.length - 1] + th));
+      let xLocal = [...x];
       if (["hcyl", "vcyl", "sphere"].includes(geom)) {
         const rOut = currentDims.D * 6;
-        for (let i = 0; i < x.length; i++) x[i] = rOut - totalThick + x[i];
+        for (let i = 0; i < xLocal.length; i++) xLocal[i] = rOut - totalThick + xLocal[i];
       }
 
       const tsInit = t0 + 0.1 * (t1 - t0);
-      let t = x.map((xi, i) => (i === 0 ? t1 : t1 + ((tsInit - t1) * (xi - x[0])) / (x[x.length - 1] - x[0])));
+      let t = xLocal.map((xi, i) => (i === 0 ? t1 : t1 + ((tsInit - t1) * (xi - xLocal[0])) / (xLocal[xLocal.length - 1] - xLocal[0])));
       let q = 0, ke = [], R = [], hStats = {};
 
       for (let it = 0; it < 500; it++) {
         ke = polys.map((p, m) => kEff(p, t[m + 1], t[m]));
         R = ke.map((k, m) => {
-          if (geom === "hcyl" || geom === "vcyl") return (x[x.length - 1] * Math.log(x[m + 1] / x[m])) / k;
-          if (geom === "sphere") return (x[x.length - 1] ** 2 * (x[m + 1] - x[m])) / (k * x[m] * x[m + 1]);
-          return (x[m + 1] - x[m]) / k;
+          if (geom === "hcyl" || geom === "vcyl") return (xLocal[xLocal.length - 1] * Math.log(xLocal[m + 1] / xLocal[m])) / k;
+          if (geom === "sphere") return (xLocal[xLocal.length - 1] ** 2 * (xLocal[m + 1] - xLocal[m])) / (k * xLocal[m] * xLocal[m + 1]);
+          return (xLocal[m + 1] - xLocal[m]) / k;
         });
         hStats = hOut(t[t.length - 1], t0, eps, wind, geom, currentDims);
         const Ro = 1 / hStats.hTot;
@@ -427,52 +527,95 @@
       }
 
       const ts = t[t.length - 1];
-      document.getElementById("kpiTs").textContent = `${Math.round(ts)} °F`;
-      document.getElementById("kpiTsSub").textContent = `${ts - t0 >= 0 ? "+" : ""}${Math.round(ts - t0)} °F vs Ambient`;
+
+      // Hero styling matching app2.py
+      const hero = document.getElementById("heroCard");
+      let grad = "linear-gradient(135deg, #e4572e, #b83a17)";
+      let status = "Hot shell";
+      if (ts < 200) {
+        grad = "linear-gradient(135deg, #2e9e6b, #1f7a52)";
+        status = "Cool shell";
+      } else if (ts < 300) {
+        grad = "linear-gradient(135deg, #e0a21b, #c27d0e)";
+        status = "Warm shell";
+      }
+      hero.style.background = grad;
+      document.getElementById("heroTemp").textContent = `${Math.round(ts)} °F`;
+      document.getElementById("heroSub").textContent = `${status} · ${ts - t0 >= 0 ? "+" : ""}${Math.round(ts - t0)} °F vs ambient`;
+
+      // 2x2 Metric Grid
       document.getElementById("kpiQ").textContent = Math.round(q).toLocaleString();
-
       if (geom === "hcyl" || geom === "vcyl") {
-        document.getElementById("kpi3Title").textContent = "Linear Pipe Loss (qp)";
+        document.getElementById("kpi3Title").textContent = "Heat loss per length";
         document.getElementById("kpi3Val").textContent = Math.round(Math.PI * currentDims.D * q).toLocaleString();
-        document.getElementById("kpi3Sub").textContent = "Btu / (h·ft)";
+        document.getElementById("kpi3Unit").textContent = "Btu/(h·ft) of length";
       } else {
-        document.getElementById("kpi3Title").textContent = "Total Lining Thick";
-        document.getElementById("kpi3Val").textContent = `${totalThick.toFixed(1)} in.`;
-        document.getElementById("kpi3Sub").textContent = `${n} Refractory Layer(s)`;
+        document.getElementById("kpi3Title").textContent = "Lining thickness";
+        document.getElementById("kpi3Val").textContent = totalThick.toFixed(1);
+        document.getElementById("kpi3Unit").textContent = "inches";
       }
-
       document.getElementById("kpiH").textContent = hStats.hTot.toFixed(2);
-      document.getElementById("kpiHSub").textContent = `hr=${hStats.hr.toFixed(2)} | hc=${hStats.hc.toFixed(2)}`;
+      document.getElementById("kpiHrHc").textContent = `${hStats.hr.toFixed(1)} / ${hStats.hc.toFixed(1)}`;
 
-      if (activePreset) {
-        badge.innerHTML = `✅ <strong>API RP 985 Table A.8 Verified:</strong> Standard Target = <strong>${activePreset.expTs} °F</strong> & <strong>${activePreset.expQ} Btu/(h·ft²)</strong> | Calculated = <strong>${Math.round(ts)} °F</strong> & <strong>${Math.round(q)} Btu/(h·ft²)</strong>`;
-        badge.classList.remove("hidden");
+      // Layer Cards matching app2.py
+      const layerCards = document.getElementById("layerCards");
+      layerCards.innerHTML = "";
+      const names = layers.map(([n]) => n);
+      layers.forEach(([name], i) => {
+        const drop = t[i] - t[i + 1];
+        const card = document.createElement("div");
+        card.className = "flex gap-2.5 bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs items-stretch";
+        card.innerHTML = `
+          <div class="w-1.5 rounded-full flex-none" style="background:${PALETTE[i % PALETTE.length]}"></div>
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-sm text-slate-800">${name} · ${currentThick[i]} in.</div>
+            <div class="text-xs text-slate-600 mt-0.5">${Math.round(t[i])} °F → ${Math.round(t[i + 1])} °F &nbsp;<span class="text-slate-400 font-medium">(drop ${Math.round(drop)} °F)</span></div>
+            <div class="text-[0.72rem] text-slate-500 mt-1">k<sub>eff</sub> ${ke[i].toFixed(2)} Btu·in/(h·ft²·°F) · R ${R[i].toFixed(3)}</div>
+          </div>
+        `;
+        layerCards.appendChild(card);
+      });
+
+      // Where the drop happens (Stacked bar)
+      const drops = layers.map((_, i) => Math.max(0, t[i] - t[i + 1]));
+      drops.push(Math.max(ts - t0, 0));
+      const dropNames = [...names, "Outside air film"];
+      const dropColors = [...PALETTE.slice(0, names.length), "#9aa5b1"];
+      const totalDrop = drops.reduce((a, b) => a + b, 0) || 1;
+
+      const stackBar = document.getElementById("stackBar");
+      const stackLegend = document.getElementById("stackLegend");
+      stackBar.innerHTML = "";
+      stackLegend.innerHTML = "";
+
+      drops.forEach((dVal, i) => {
+        const pct = (dVal / totalDrop) * 100;
+        const seg = document.createElement("div");
+        seg.style.width = `${pct}%`;
+        seg.style.background = dropColors[i];
+        seg.title = `${dropNames[i]}: ${Math.round(dVal)} °F`;
+        stackBar.appendChild(seg);
+
+        const leg = document.createElement("span");
+        leg.className = "inline-flex items-center gap-1.5";
+        leg.innerHTML = `<i class="w-2.5 h-2.5 rounded-xs" style="background:${dropColors[i]}"></i> ${dropNames[i]} ${Math.round(pct)}%`;
+        stackLegend.appendChild(leg);
+      });
+
+      // Benchmark Check Badge matching app2.py
+      const checkDiv = document.getElementById("benchmarkCheck");
+      if (currentPreset && !currentPreset.custom) {
+        const ok = Math.abs(ts - currentPreset.expTs) <= 2 && Math.abs(q - currentPreset.expQ) <= 3;
+        checkDiv.innerHTML = `${ok ? "✅" : "⚠️"} Table A.8 target: ${currentPreset.expTs} °F · ${currentPreset.expQ} Btu/(h·ft²) &nbsp;|&nbsp; calculated: ${Math.round(ts)} °F · ${Math.round(q)}`;
+      } else {
+        checkDiv.innerHTML = "";
       }
 
-      const tbody = document.getElementById("layerTableBody");
-      tbody.innerHTML = "";
-      lastReportRows = [];
-      layers.forEach(([name], i) => {
-        const hot = t[i], cold = t[i + 1], mean = 0.5 * (hot + cold);
-        lastReportRows.push({
-          layer: i + 1, name, thick: currentThick[i], hot: hot.toFixed(1), cold: cold.toFixed(1),
-          mean: mean.toFixed(1), ke: ke[i].toFixed(2), R: R[i].toFixed(3)
-        });
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td class="py-2.5 px-3 font-medium text-slate-900">Layer ${i + 1}</td>
-          <td class="py-2.5 px-3">${name}</td>
-          <td class="py-2.5 px-3">${currentThick[i].toFixed(2)}</td>
-          <td class="py-2.5 px-3 text-orange-600 font-medium">${hot.toFixed(1)}</td>
-          <td class="py-2.5 px-3 text-blue-600 font-medium">${cold.toFixed(1)}</td>
-          <td class="py-2.5 px-3">${mean.toFixed(1)}</td>
-          <td class="py-2.5 px-3">${ke[i].toFixed(2)}</td>
-          <td class="py-2.5 px-3">${R[i].toFixed(3)}</td>
-        `;
-        tbody.appendChild(tr);
-      });
+      // Update Chart
+      updateChart(x, t, names, t0, t1, ts);
     }
 
+    // Event Listeners
     presetSelect.addEventListener("change", (e) => loadPreset(parseInt(e.target.value, 10)));
     geomSelect.addEventListener("change", () => { renderDimInputs(); calculate(); });
     liningSelect.addEventListener("change", () => { renderLayerInputs(); calculate(); });
@@ -480,18 +623,9 @@
       document.getElementById(id).addEventListener("input", () => calculate());
     });
 
-    document.getElementById("downloadCsvBtn").addEventListener("click", () => {
-      const headers = ["Layer,Material,Thickness(in),Hot_Side(F),Cold_Side(F),Mean_Temp(F),k_eff,R_Value"];
-      lastReportRows.forEach((r) => headers.push(`${r.layer},"${r.name}",${r.thick},${r.hot},${r.cold},${r.mean},${r.ke},${r.R}`));
-      const blob = new Blob([headers.join("\n")], { type: "text/csv" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "API_RP_985_Thermal_Report.csv";
-      a.click();
-    });
-
     // Initialize with Case 1
-    loadPreset(0);
+    presetSelect.value = "1";
+    loadPreset(1);
   </script>
 </body>
 </html>
