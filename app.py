@@ -178,8 +178,56 @@ def solve_api985(geom, d, lining_id, thick, eps, t0, wind, t1):
     raise RuntimeError("Solver did not converge within 500 iterations.")
 
 
+
 # ==========================================
-# 2. UI
+# 2. UNIT CONVERSION LAYER (UI only - the engine above always works in US units)
+#    SI input -> US  ->  solve  ->  US results -> SI display
+# ==========================================
+FT_M = 0.3048            # 1 ft  = 0.3048 m
+IN_MM = 25.4             # 1 in  = 25.4 mm
+MPH_MS = 0.44704         # 1 mph = 0.44704 m/s
+BTU_HFT2_TO_WM2 = 3.154591      # Btu/(h·ft²)        -> W/m²
+BTU_HFT_TO_WM = 0.961519        # Btu/(h·ft)         -> W/m
+H_TO_SI = 5.678263              # Btu/(h·ft²·°F)     -> W/(m²·K)
+K_TO_SI = 0.1442279             # Btu·in/(h·ft²·°F)  -> W/(m·K)
+R_TO_SI = 0.1761102             # h·ft²·°F/Btu      -> m²·K/W
+
+US_UNIT = {"len": "ft", "thk": "in.", "temp": "°F", "wind": "mph"}
+SI_UNIT = {"len": "m", "thk": "mm", "temp": "°C", "wind": "m/s"}
+
+_TO_SI = {
+    "len": lambda v: v * FT_M,
+    "thk": lambda v: v * IN_MM,
+    "temp": lambda v: (v - 32.0) / 1.8,
+    "wind": lambda v: v * MPH_MS,
+}
+_TO_US = {
+    "len": lambda v: v / FT_M,
+    "thk": lambda v: v / IN_MM,
+    "temp": lambda v: v * 1.8 + 32.0,
+    "wind": lambda v: v / MPH_MS,
+}
+
+
+def to_si(kind, v):
+    return None if v is None else _TO_SI[kind](v)
+
+
+def to_us(kind, v):
+    return None if v is None else _TO_US[kind](v)
+
+
+def convert_inputs_on_toggle():
+    """When the unit switch flips, convert the numbers already typed so nothing is lost."""
+    si_now = st.session_state.get("si_units", False)
+    for key, kind in st.session_state.get("_unit_reg", {}).items():
+        if key in st.session_state:
+            v = st.session_state[key]
+            st.session_state[key] = to_si(kind, v) if si_now else to_us(kind, v)
+
+
+# ==========================================
+# 3. UI
 # ==========================================
 st.set_page_config(page_title="API RP 985 Calculator", page_icon="🔥", layout="centered",
                    initial_sidebar_state="collapsed")
@@ -191,7 +239,7 @@ st.markdown(
 <style>
 .block-container {padding: 1rem 0.9rem 3rem; max-width: 760px;}
 h1 {font-size: 1.5rem !important; margin-bottom: 0 !important;}
-.sub {opacity: .65; font-size: .85rem; margin-bottom: .8rem;}
+.sub {opacity: .65; font-size: .85rem; margin-bottom: .4rem;}
 .hero {border-radius: 18px; padding: 18px 16px; margin: 8px 0 12px; color: #fff;}
 .hero .lbl {font-size: .8rem; opacity: .9; letter-spacing: .04em; text-transform: uppercase;}
 .hero .big {font-size: 3rem; font-weight: 800; line-height: 1.1;}
@@ -220,6 +268,10 @@ h1 {font-size: 1.5rem !important; margin-bottom: 0 !important;}
 st.title("🔥 Refractory Shell Temperature")
 st.markdown('<div class="sub">API RP 985 steady-state heat loss calculator</div>', unsafe_allow_html=True)
 
+# ---------- Unit switch (US <-> SI) ----------
+SI = st.toggle("SI units (m · mm · °C · W)  —  off = US units (ft · in · °F · Btu)",
+               key="si_units", on_change=convert_inputs_on_toggle)
+
 GEOM_LABELS = {
     "hcyl": "Horizontal cylinder",
     "vcyl": "Vertical cylinder",
@@ -229,6 +281,26 @@ GEOM_LABELS = {
     "sphere": "Sphere",
 }
 LABEL_TO_GEOM = {v: k for k, v in GEOM_LABELS.items()}
+
+_unit_reg = {}  # widget key -> unit kind, used to convert typed values when the switch flips
+
+
+def num(label, kind, us_default, us_min, us_max, us_step, si_step, key):
+    """Number input shown in the active unit system; ALWAYS returns the value in US units."""
+    _unit_reg[key] = kind
+    kw = {} if key in st.session_state else {"value": None}  # session value wins once it exists
+    if SI:
+        if "value" in kw:
+            kw["value"] = float(to_si(kind, us_default))
+        v = st.number_input(f"{label} ({SI_UNIT[kind]})", min_value=to_si(kind, us_min),
+                            max_value=to_si(kind, us_max), step=si_step, format="%.3f" if kind == "len" else "%.2f",
+                            key=key, **kw)
+        return float(to_us(kind, v))
+    if "value" in kw:
+        kw["value"] = float(us_default)
+    return float(st.number_input(f"{label} ({US_UNIT[kind]})", min_value=us_min, max_value=us_max,
+                                 step=us_step, format="%.2f", key=key, **kw))
+
 
 # ---------- Inputs (in main page so they work on mobile) ----------
 with st.expander("⚙️ Inputs", expanded=True):
@@ -245,17 +317,17 @@ with st.expander("⚙️ Inputs", expanded=True):
         geom = LABEL_TO_GEOM[geom_label]
         d = {}
         if geom in ("hcyl", "vcyl", "sphere"):
-            d["D"] = st.number_input("Shell inside diameter (ft)", min_value=0.5,
-                                     value=float(preset[1].get("D", 8.0)) if preset else 8.0, step=0.5, key=f"D_{K}")
+            d["D"] = num("Shell inside diameter", "len", float(preset[1].get("D", 8.0)) if preset else 8.0,
+                         0.5, None, 0.5, 0.1, f"D_{K}")
         if geom in ("vcyl", "wall"):
-            d["h"] = st.number_input("Height (ft)", min_value=0.5,
-                                     value=float(preset[1].get("h", 30.0)) if preset else 30.0, step=1.0, key=f"h_{K}")
+            d["h"] = num("Height", "len", float(preset[1].get("h", 30.0)) if preset else 30.0,
+                         0.5, None, 1.0, 0.5, f"h_{K}")
         if geom in ("wall", "roof", "floor"):
-            d["l"] = st.number_input("Length in wind direction (ft)", min_value=0.5,
-                                     value=float(preset[1].get("l", 30.0)) if preset else 30.0, step=1.0, key=f"l_{K}")
+            d["l"] = num("Length in wind direction", "len", float(preset[1].get("l", 30.0)) if preset else 30.0,
+                         0.5, None, 1.0, 0.5, f"l_{K}")
         if geom in ("roof", "floor"):
-            d["w"] = st.number_input("Width (ft)", min_value=0.5,
-                                     value=float(preset[1].get("w", 6.0)) if preset else 6.0, step=1.0, key=f"w_{K}")
+            d["w"] = num("Width", "len", float(preset[1].get("w", 6.0)) if preset else 6.0,
+                         0.5, None, 1.0, 0.5, f"w_{K}")
 
     with tab_l:
         def_lin = preset[2] if preset else 4
@@ -266,27 +338,46 @@ with st.expander("⚙️ Inputs", expanded=True):
         thick = []
         for idx, (lname, def_th, _) in enumerate(layers_info):
             pth = float(preset[3][idx]) if (preset and preset[2] == lining_id and idx < len(preset[3])) else float(def_th)
-            thick.append(st.number_input(f"{idx+1}. {lname} thickness (in.)", min_value=0.1, value=pth,
-                                         step=0.5, key=f"th_{K}_{lining_id}_{idx}"))
+            thick.append(num(f"{idx+1}. {lname} thickness", "thk", pth, 0.1, None, 0.5, 5.0,
+                             f"th_{K}_{lining_id}_{idx}"))
 
     with tab_c:
-        t1 = st.number_input("Hot face temperature (°F)", -200.0, 4000.0,
-                             float(preset[7]) if preset else 2000.0, 25.0, key=f"t1_{K}")
-        t0 = st.number_input("Ambient temperature (°F)", -100.0, 500.0,
-                             float(preset[5]) if preset else 100.0, 5.0, key=f"t0_{K}")
-        wind = st.number_input("Wind speed (mph)", 0.0, 150.0,
-                               float(preset[6]) if preset else 0.0, 1.0, key=f"wind_{K}")
+        t1 = num("Hot face temperature", "temp", float(preset[7]) if preset else 2000.0,
+                 -200.0, 4000.0, 25.0, 10.0, f"t1_{K}")
+        t0 = num("Ambient temperature", "temp", float(preset[5]) if preset else 100.0,
+                 -100.0, 500.0, 5.0, 2.0, f"t0_{K}")
+        wind = num("Wind speed", "wind", float(preset[6]) if preset else 0.0,
+                   0.0, 150.0, 1.0, 0.5, f"wind_{K}")
         eps = st.slider("Shell emissivity (ε)", 0.05, 1.00,
                         float(preset[4]) if preset else 0.80, 0.05, key=f"eps_{K}")
 
-# ---------- Solve ----------
+st.session_state["_unit_reg"] = _unit_reg
+
+# ---------- Solve (always in US units: inputs were converted back to US above) ----------
 try:
     t_prof, q_flux, ke_list, R_list, h_tot, hr, hc, iters = solve_api985(geom, d, lining_id, thick, eps, t0, wind, t1)
 except Exception as e:
     st.error(f"⚠️ {e}")
     st.stop()
 
-ts = float(t_prof[-1])
+# ---------- Convert results US -> display units ----------
+ts = float(t_prof[-1])                       # US value, used for the colour thresholds
+if SI:
+    U_T, U_DT, U_LEN, U_Q, U_QL, U_H, U_K, U_R = "°C", "K", "mm", "W/m²", "W/m", "W/(m²·K)", "W/(m·K)", "m²·K/W"
+    T = lambda f: (f - 32.0) / 1.8                 # absolute temperature
+    DT = lambda f: f / 1.8                         # temperature difference
+    LEN = lambda inch: inch * IN_MM                # lining dimensions (mm)
+    Q = lambda v: v * BTU_HFT2_TO_WM2
+    QL = lambda v: v * BTU_HFT_TO_WM
+    HC = lambda v: v * H_TO_SI
+    KE = lambda v: v * K_TO_SI
+    RR = lambda v: v * R_TO_SI
+    r_fmt, len_fmt = ".4f", ".0f"
+else:
+    U_T, U_DT, U_LEN, U_Q, U_QL, U_H, U_K, U_R = "°F", "°F", "in.", "Btu/(h·ft²)", "Btu/(h·ft)", "Btu/(h·ft²·°F)", "Btu·in/(h·ft²·°F)", "h·ft²·°F/Btu"
+    T = DT = LEN = Q = QL = HC = KE = RR = (lambda v: v)
+    r_fmt, len_fmt = ".3f", ".1f"
+
 if ts < 200:
     grad, status = "linear-gradient(135deg,#2e9e6b,#1f7a52)", "Cool shell"
 elif ts < 300:
@@ -299,8 +390,8 @@ st.markdown(
     f"""
 <div class="hero" style="background:{grad}">
   <div class="lbl">Predicted shell temperature</div>
-  <div class="big">{ts:.0f} °F</div>
-  <div class="note">{status} · {ts - t0:+.0f} °F vs ambient</div>
+  <div class="big">{T(ts):.0f} {U_T}</div>
+  <div class="note">{status} · {DT(ts - t0):+.0f} {U_DT} vs ambient</div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -308,17 +399,17 @@ st.markdown(
 
 total_th = sum(thick)
 if geom in ("hcyl", "vcyl"):
-    third = (f"{pi * d['D'] * q_flux:,.0f}", "Btu/(h·ft) of length", "Heat loss per length")
+    third = (f"{QL(pi * d['D'] * q_flux):,.0f}", f"{U_QL} of length", "Heat loss per length")
 else:
-    third = (f"{total_th:.1f}", "inches", "Lining thickness")
+    third = (f"{LEN(total_th):{len_fmt}}", "mm" if SI else "inches", "Lining thickness")
 
 st.markdown(
     f"""
 <div class="grid">
-  <div class="kpi"><div class="l">Heat loss</div><div class="v">{q_flux:,.0f}</div><div class="u">Btu/(h·ft²)</div></div>
+  <div class="kpi"><div class="l">Heat loss</div><div class="v">{Q(q_flux):,.0f}</div><div class="u">{U_Q}</div></div>
   <div class="kpi"><div class="l">{third[2]}</div><div class="v">{third[0]}</div><div class="u">{third[1]}</div></div>
-  <div class="kpi"><div class="l">Outer film h</div><div class="v">{h_tot:.2f}</div><div class="u">Btu/(h·ft²·°F)</div></div>
-  <div class="kpi"><div class="l">Radiation / convection</div><div class="v">{hr:.1f} / {hc:.1f}</div><div class="u">Btu/(h·ft²·°F)</div></div>
+  <div class="kpi"><div class="l">Outer film h</div><div class="v">{HC(h_tot):.2f}</div><div class="u">{U_H}</div></div>
+  <div class="kpi"><div class="l">Radiation / convection</div><div class="v">{HC(hr):.1f} / {HC(hc):.1f}</div><div class="u">{U_H}</div></div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -327,27 +418,30 @@ st.markdown(
 # ---------- Temperature profile chart ----------
 st.markdown('<div class="sec">Temperature through the lining</div>', unsafe_allow_html=True)
 
-edges = np.concatenate(([0.0], np.cumsum(thick)))
+edges = LEN(np.concatenate(([0.0], np.cumsum(thick))))
+t_disp = np.array([T(v) for v in t_prof])
 names = [n for n, _, _ in layers_info]
+y_lo = T(min(t0, ts) - 0.05 * (t1 - t0))
+y_hi = T(t1 + 0.05 * (t1 - t0))
 bands = pd.DataFrame({
     "Layer": names,
     "x0": edges[:-1],
     "x1": edges[1:],
-    "y0": [min(t0, ts) - 0.05 * (t1 - t0)] * len(names),
-    "y1": [t1 + 0.05 * (t1 - t0)] * len(names),
+    "y0": [y_lo] * len(names),
+    "y1": [y_hi] * len(names),
 })
 color_scale = alt.Scale(domain=names, range=PALETTE[:len(names)])
 bg = alt.Chart(bands).mark_rect(opacity=0.22).encode(
-    x=alt.X("x0:Q", title="Distance from hot face (in.)"),
+    x=alt.X("x0:Q", title=f"Distance from hot face ({U_LEN})"),
     x2="x1:Q",
-    y=alt.Y("y0:Q", title="Temperature (°F)"),
+    y=alt.Y("y0:Q", title=f"Temperature ({U_T})"),
     y2="y1:Q",
     color=alt.Color("Layer:N", scale=color_scale, legend=alt.Legend(orient="bottom", title=None)),
 )
-line_df = pd.DataFrame({"x": edges, "T": t_prof})
+line_df = pd.DataFrame({"x": edges, "T": t_disp})
 line = alt.Chart(line_df).mark_line(strokeWidth=3, color="#d62728", point=alt.OverlayMarkDef(size=70, color="#d62728")).encode(
-    x="x:Q", y="T:Q", tooltip=[alt.Tooltip("x:Q", title="Depth (in.)", format=".1f"),
-                                alt.Tooltip("T:Q", title="Temp (°F)", format=".0f")])
+    x="x:Q", y="T:Q", tooltip=[alt.Tooltip("x:Q", title=f"Depth ({U_LEN})", format=".1f"),
+                                alt.Tooltip("T:Q", title=f"Temp ({U_T})", format=".0f")])
 labels = alt.Chart(line_df).mark_text(dy=-12, fontWeight="bold", fontSize=12).encode(
     x="x:Q", y="T:Q", text=alt.Text("T:Q", format=".0f"))
 chart = (bg + line + labels).properties(height=300).configure_axis(grid=False)
@@ -361,9 +455,9 @@ for i, nm in enumerate(names):
 <div class="lay">
   <div class="bar" style="background:{PALETTE[i]}"></div>
   <div style="flex:1">
-    <div class="nm">{nm} · {thick[i]:g} in.</div>
-    <div class="tp">{t_prof[i]:.0f} °F → {t_prof[i+1]:.0f} °F &nbsp;(drop {t_prof[i]-t_prof[i+1]:.0f} °F)</div>
-    <div class="tm">k<sub>eff</sub> {ke_list[i]:.2f} Btu·in/(h·ft²·°F) · R {R_list[i]:.3f}</div>
+    <div class="nm">{nm} · {LEN(thick[i]):{'.0f' if SI else 'g'}} {U_LEN}</div>
+    <div class="tp">{T(t_prof[i]):.0f} {U_T} → {T(t_prof[i+1]):.0f} {U_T} &nbsp;(drop {DT(t_prof[i]-t_prof[i+1]):.0f} {U_DT})</div>
+    <div class="tm">k<sub>eff</sub> {KE(ke_list[i]):.{3 if SI else 2}f} {U_K} · R {RR(R_list[i]):{r_fmt}} {U_R if SI else ''}</div>
   </div>
 </div>"""
 st.markdown(cards, unsafe_allow_html=True)
@@ -375,7 +469,7 @@ dn = names + ["Outside air film"]
 dc = PALETTE[:len(names)] + ["#9aa5b1"]
 tot = sum(drops) or 1.0
 seg = "".join(
-    f'<div style="width:{v / tot * 100:.2f}%;background:{c}" title="{n}: {v:.0f} °F"></div>'
+    f'<div style="width:{v / tot * 100:.2f}%;background:{c}" title="{n}: {DT(v):.0f} {U_DT}"></div>'
     for v, c, n in zip(drops, dc, dn)
 )
 leg = "".join(
@@ -383,12 +477,12 @@ leg = "".join(
 )
 st.markdown(f'<div class="stack">{seg}</div><div class="leg">{leg}</div>', unsafe_allow_html=True)
 
-# ---------- Benchmark check ----------
+# ---------- Benchmark check (comparison done in US units, shown in the active units) ----------
 if preset:
     ok = abs(ts - preset[8]) <= 2 and abs(q_flux - preset[9]) <= 3
     icon = "✅" if ok else "⚠️"
     st.markdown(
-        f'<div class="chk">{icon} Table A.8 target: {preset[8]} °F · {preset[9]} Btu/(h·ft²) '
-        f'&nbsp;|&nbsp; calculated: {ts:.0f} °F · {q_flux:.0f}</div>',
+        f'<div class="chk">{icon} Table A.8 target: {T(preset[8]):.0f} {U_T} · {Q(preset[9]):.0f} {U_Q} '
+        f'&nbsp;|&nbsp; calculated: {T(ts):.0f} {U_T} · {Q(q_flux):.0f}</div>',
         unsafe_allow_html=True,
     )
