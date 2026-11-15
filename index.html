@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>API RP 985 Calculator</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Chart.js for the visual temperature profile chart matching app2.py Altair output -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     .max-container { max-width: 760px; }
@@ -24,10 +23,21 @@
       </p>
     </header>
 
+    <!-- Unit Toggle Switch (US <-> SI) -->
+    <div class="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl px-4 py-2.5 shadow-xs">
+      <label for="siToggle" class="text-xs md:text-sm font-semibold text-slate-700 cursor-pointer select-none">
+        SI units (m · mm · °C · W) <span class="text-slate-400 font-normal ml-1">— off = US units (ft · in · °F · Btu)</span>
+      </label>
+      <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+        <input type="checkbox" id="siToggle" class="sr-only peer">
+        <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+      </label>
+    </div>
+
     <!-- Error Banner -->
     <div id="errorBox" class="hidden bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-xl text-xs font-semibold"></div>
 
-    <!-- Hero Card (Dynamic color matching app2.py) -->
+    <!-- Hero Card -->
     <div id="heroCard" class="rounded-2xl p-5 text-white shadow-sm transition-all duration-300">
       <div class="text-[0.72rem] tracking-wider uppercase opacity-90 font-bold">Predicted Shell Temperature</div>
       <div id="heroTemp" class="text-5xl font-black leading-tight tracking-tight mt-0.5">-- °F</div>
@@ -39,7 +49,7 @@
       <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
         <div class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Heat Loss</div>
         <div id="kpiQ" class="text-xl font-extrabold text-slate-800 mt-0.5">--</div>
-        <div class="text-[0.68rem] text-slate-400">Btu / (h·ft²)</div>
+        <div id="kpiQUnit" class="text-[0.68rem] text-slate-400">Btu/(h·ft²)</div>
       </div>
       <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
         <div id="kpi3Title" class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Lining Thickness</div>
@@ -49,12 +59,12 @@
       <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
         <div class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Outer Film h</div>
         <div id="kpiH" class="text-xl font-extrabold text-slate-800 mt-0.5">--</div>
-        <div class="text-[0.68rem] text-slate-400">Btu / (h·ft²·°F)</div>
+        <div id="kpiHUnit" class="text-[0.68rem] text-slate-400">Btu/(h·ft²·°F)</div>
       </div>
       <div class="bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs">
         <div class="text-[0.68rem] font-bold text-slate-400 uppercase tracking-wide">Radiation / Convection</div>
         <div id="kpiHrHc" class="text-xl font-extrabold text-slate-800 mt-0.5">-- / --</div>
-        <div class="text-[0.68rem] text-slate-400">Btu / (h·ft²·°F)</div>
+        <div id="kpiHrHcUnit" class="text-[0.68rem] text-slate-400">Btu/(h·ft²·°F)</div>
       </div>
     </div>
 
@@ -82,7 +92,7 @@
     <!-- Benchmark Target Check Badge -->
     <div id="benchmarkCheck" class="text-center text-xs font-medium text-slate-500 py-1"></div>
 
-    <!-- Inputs Expander / Accordion matching app2.py -->
+    <!-- Inputs Expander -->
     <details class="group bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden" open>
       <summary class="flex justify-between items-center px-4 py-3 cursor-pointer select-none font-bold text-sm text-slate-800">
         <span>⚙️ Inputs</span>
@@ -96,7 +106,7 @@
           <select id="presetSelect" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs md:text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-amber-500"></select>
         </div>
 
-        <!-- Mobile-friendly tab controls -->
+        <!-- Tabs -->
         <div class="flex border-b border-slate-200 text-xs font-bold text-slate-600">
           <button id="tabBtnShape" class="tab-btn px-4 py-2 border-b-2 border-amber-600 text-amber-600" onclick="switchTab('shape')">📐 Shape</button>
           <button id="tabBtnLining" class="tab-btn px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800" onclick="switchTab('lining')">🧱 Lining</button>
@@ -137,16 +147,16 @@
         <!-- Tab 3: Conditions -->
         <div id="tabCond" class="tab-content hidden grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Hot face temp (°F)</label>
-            <input id="t1" type="number" step="25" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
+            <label id="lblT1" class="block text-xs font-semibold text-slate-600 mb-1">Hot face temperature (°F)</label>
+            <input id="t1" type="number" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Ambient temp (°F)</label>
-            <input id="t0" type="number" step="5" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
+            <label id="lblT0" class="block text-xs font-semibold text-slate-600 mb-1">Ambient temperature (°F)</label>
+            <input id="t0" type="number" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Wind speed (mph)</label>
-            <input id="wind" type="number" step="1" min="0" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
+            <label id="lblWind" class="block text-xs font-semibold text-slate-600 mb-1">Wind speed (mph)</label>
+            <input id="wind" type="number" min="0" class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Shell emissivity (ε)</label>
@@ -162,9 +172,34 @@
   </div>
 
   <script>
+    // ==========================================
+    // 1. CONSTANTS & UNIT CONVERSION FACTORS
+    // ==========================================
     const SIGMA = 0.1714e-8;
     const G = 32.174 * 3600 * 3600;
     const PALETTE = ["#e4572e", "#f3a712", "#5b9bd5", "#7a8b99"];
+
+    const FT_M = 0.3048;             // 1 ft  = 0.3048 m
+    const IN_MM = 25.4;              // 1 in  = 25.4 mm
+    const MPH_MS = 0.44704;          // 1 mph = 0.44704 m/s
+    const BTU_HFT2_TO_WM2 = 3.154591; // Btu/(h·ft²)       -> W/m²
+    const BTU_HFT_TO_WM = 0.961519;   // Btu/(h·ft)        -> W/m
+    const H_TO_SI = 5.678263;         // Btu/(h·ft²·°F)    -> W/(m²·K)
+    const K_TO_SI = 0.1442279;        // Btu·in/(h·ft²·°F) -> W/(m·K)
+    const R_TO_SI = 0.1761102;        // h·ft²·°F/Btu      -> m²·K/W
+
+    const toSI = {
+      len: (v) => v * FT_M,
+      thk: (v) => v * IN_MM,
+      temp: (v) => (v - 32.0) / 1.8,
+      wind: (v) => v * MPH_MS
+    };
+    const toUS = {
+      len: (v) => v / FT_M,
+      thk: (v) => v / IN_MM,
+      temp: (v) => v * 1.8 + 32.0,
+      wind: (v) => v / MPH_MS
+    };
 
     const Z = [[500, 23.60], [1000, 14.85], [1500, 14.13], [2000, 15.61]];
     const IC = [[500, 3.32], [1000, 3.02], [1500, 3.24], [2000, 3.60]];
@@ -206,6 +241,9 @@
       { name: "Case 20: Floor | Lining 5 | 2500 °F, ε 0.15", geom: "floor", d: { l: 30.0, w: 6.0 }, lin: 5, th: [6.0, 4.0, 1.5], eps: 0.15, t0: -5.0, wind: 10.0, t1: 2500.0, expTs: 332, expQ: 647 }
     ];
 
+    // ==========================================
+    // 2. CORE SOLVER ENGINE (Always US units)
+    // ==========================================
     function fitCubic(pts) {
       if (pts.length === 1) return [pts[0][1], 0, 0, 0];
       const n = pts.length;
@@ -228,7 +266,7 @@
         for (let k = i - 1; k >= 0; k--) B[k] -= A[k][i] * x[i];
       }
       while (x.length < 4) x.push(0);
-      return x; // [a, b, c, d]
+      return x;
     }
 
     function kEff(coeffs, t1, t2) {
@@ -307,7 +345,30 @@
       return { hTot: hr + hc, hr, hc };
     }
 
-    // Chart.js background colored band plugin to replicate app2.py Altair mark_rect
+    // ==========================================
+    // 3. STATE MANAGEMENT & UI
+    // ==========================================
+    // Store core state internally in US units (matching app2.py architecture)
+    let stateUS = {
+      dims: { D: 8.0, h: 30.0, l: 30.0, w: 6.0 },
+      thick: [6.0],
+      t1: 2000.0,
+      t0: 100.0,
+      wind: 0.0,
+      eps: 0.8
+    };
+    let isSI = false;
+    let chartInstance = null;
+    let currentPreset = null;
+
+    const siToggle = document.getElementById("siToggle");
+    const presetSelect = document.getElementById("presetSelect");
+    const geomSelect = document.getElementById("geom");
+    const liningSelect = document.getElementById("lining");
+    const dimFields = document.getElementById("dimFields");
+    const layerFields = document.getElementById("layerFields");
+
+    // Chart.js background colored band plugin
     const layerBandsPlugin = {
       id: "layerBands",
       beforeDraw(chart) {
@@ -326,18 +387,6 @@
     };
     Chart.register(layerBandsPlugin);
 
-    // State
-    let currentDims = { D: 8.0, h: 30.0, l: 30.0, w: 6.0 };
-    let currentThick = [6.0];
-    let chartInstance = null;
-    let currentPreset = null;
-
-    const presetSelect = document.getElementById("presetSelect");
-    const geomSelect = document.getElementById("geom");
-    const liningSelect = document.getElementById("lining");
-    const dimFields = document.getElementById("dimFields");
-    const layerFields = document.getElementById("layerFields");
-
     PRESETS.forEach((p, idx) => {
       const opt = document.createElement("option");
       opt.value = idx;
@@ -350,55 +399,100 @@
         const isTarget = t === tab;
         document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}`).classList.toggle("hidden", !isTarget);
         const btn = document.getElementById(`tabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        if (isTarget) {
-          btn.className = "tab-btn px-4 py-2 border-b-2 border-amber-600 text-amber-600 font-bold";
-        } else {
-          btn.className = "tab-btn px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold";
-        }
+        btn.className = isTarget
+          ? "tab-btn px-4 py-2 border-b-2 border-amber-600 text-amber-600 font-bold"
+          : "tab-btn px-4 py-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 font-bold";
       });
     };
+
+    function fmtInput(val, kind) {
+      if (isSI) {
+        return kind === "len" ? Number(toSI.len(val).toFixed(3)) : Number(toSI[kind](val).toFixed(2));
+      }
+      return Number(val.toFixed(2));
+    }
 
     function renderDimInputs() {
       const g = geomSelect.value;
       dimFields.innerHTML = "";
       const fields = [];
-      if (["hcyl", "vcyl", "sphere"].includes(g)) fields.push(["D", "Shell ID (ft)"]);
-      if (["vcyl", "wall"].includes(g)) fields.push(["h", "Height (ft)"]);
-      if (["wall", "roof", "floor"].includes(g)) fields.push(["l", "Length in wind dir (ft)"]);
-      if (["roof", "floor"].includes(g)) fields.push(["w", "Width (ft)"]);
+      if (["hcyl", "vcyl", "sphere"].includes(g)) fields.push(["D", "Shell inside diameter"]);
+      if (["vcyl", "wall"].includes(g)) fields.push(["h", "Height"]);
+      if (["wall", "roof", "floor"].includes(g)) fields.push(["l", "Length in wind direction"]);
+      if (["roof", "floor"].includes(g)) fields.push(["w", "Width"]);
+
+      const unitLabel = isSI ? "m" : "ft";
+      const stepVal = isSI ? "0.1" : "0.5";
 
       fields.forEach(([key, label]) => {
         const div = document.createElement("div");
         div.innerHTML = `
-          <label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
-          <input type="number" step="0.5" min="0.5" value="${currentDims[key]}" data-dim="${key}"
+          <label class="block text-xs font-semibold text-slate-600 mb-1">${label} (${unitLabel})</label>
+          <input type="number" step="${stepVal}" min="0.05" value="${fmtInput(stateUS.dims[key], 'len')}"
             class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
         `;
         div.querySelector("input").addEventListener("input", (e) => {
-          currentDims[key] = parseFloat(e.target.value) || 1;
-          calculate();
+          const raw = parseFloat(e.target.value);
+          if (!isNaN(raw)) {
+            stateUS.dims[key] = isSI ? toUS.len(raw) : raw;
+            calculate();
+          }
         });
         dimFields.appendChild(div);
       });
     }
 
-    function renderLayerInputs(customThicks = null) {
+    function renderLayerInputs() {
       const [, layers] = LININGS[liningSelect.value];
-      currentThick = customThicks ? [...customThicks] : layers.map(l => l[1]);
+      const unitLabel = isSI ? "mm" : "in.";
+      const stepVal = isSI ? "5.0" : "0.5";
       layerFields.innerHTML = "";
+
       layers.forEach(([name], i) => {
         const div = document.createElement("div");
         div.innerHTML = `
-          <label class="block text-xs font-semibold text-slate-600 mb-1">${i + 1}. ${name} thickness (in.)</label>
-          <input type="number" step="0.5" min="0.1" value="${currentThick[i]}"
+          <label class="block text-xs font-semibold text-slate-600 mb-1">${i + 1}. ${name} thickness (${unitLabel})</label>
+          <input type="number" step="${stepVal}" min="0.1" value="${fmtInput(stateUS.thick[i], 'thk')}"
             class="w-full rounded-xl border border-slate-300 px-3 py-1.5 text-xs md:text-sm" />
         `;
         div.querySelector("input").addEventListener("input", (e) => {
-          currentThick[i] = parseFloat(e.target.value) || 0.1;
-          calculate();
+          const raw = parseFloat(e.target.value);
+          if (!isNaN(raw)) {
+            stateUS.thick[i] = isSI ? toUS.thk(raw) : raw;
+            calculate();
+          }
         });
         layerFields.appendChild(div);
       });
+    }
+
+    function renderCondInputs() {
+      const uT = isSI ? "°C" : "°F";
+      const uW = isSI ? "m/s" : "mph";
+
+      document.getElementById("lblT1").textContent = `Hot face temperature (${uT})`;
+      document.getElementById("lblT0").textContent = `Ambient temperature (${uT})`;
+      document.getElementById("lblWind").textContent = `Wind speed (${uW})`;
+
+      const t1El = document.getElementById("t1");
+      const t0El = document.getElementById("t0");
+      const windEl = document.getElementById("wind");
+      const epsEl = document.getElementById("eps");
+
+      t1El.step = isSI ? "10" : "25";
+      t0El.step = isSI ? "2" : "5";
+      windEl.step = isSI ? "0.5" : "1";
+
+      t1El.value = fmtInput(stateUS.t1, "temp");
+      t0El.value = fmtInput(stateUS.t0, "temp");
+      windEl.value = fmtInput(stateUS.wind, "wind");
+      epsEl.value = stateUS.eps;
+    }
+
+    function syncAllInputsUI() {
+      renderDimInputs();
+      renderLayerInputs();
+      renderCondInputs();
     }
 
     function loadPreset(idx) {
@@ -409,25 +503,26 @@
         return;
       }
       geomSelect.value = p.geom;
-      currentDims = { ...currentDims, ...p.d };
+      stateUS.dims = { ...stateUS.dims, ...p.d };
       liningSelect.value = p.lin;
-      document.getElementById("eps").value = p.eps;
-      document.getElementById("t0").value = p.t0;
-      document.getElementById("wind").value = p.wind;
-      document.getElementById("t1").value = p.t1;
-      renderDimInputs();
-      renderLayerInputs(p.th);
+      stateUS.thick = [...p.th];
+      stateUS.eps = p.eps;
+      stateUS.t0 = p.t0;
+      stateUS.wind = p.wind;
+      stateUS.t1 = p.t1;
+
+      syncAllInputsUI();
       calculate();
     }
 
-    function updateChart(edges, tProf, layerNames, t0, t1, ts) {
+    function updateChart(edgesDisp, tDisp, layerNames, uLen, uTemp) {
       const bands = layerNames.map((name, i) => ({
-        x0: edges[i],
-        x1: edges[i + 1],
-        color: `${PALETTE[i % PALETTE.length]}33` // 20% opacity
+        x0: edgesDisp[i],
+        x1: edgesDisp[i + 1],
+        color: `${PALETTE[i % PALETTE.length]}38` // ~22% opacity
       }));
 
-      const points = edges.map((x, i) => ({ x, y: Math.round(tProf[i]) }));
+      const points = edgesDisp.map((x, i) => ({ x, y: Math.round(tDisp[i]) }));
 
       if (chartInstance) chartInstance.destroy();
 
@@ -454,18 +549,18 @@
             legend: { display: false },
             tooltip: {
               callbacks: {
-                label: (ctx) => `Depth: ${ctx.parsed.x.toFixed(1)}" · Temp: ${ctx.parsed.y} °F`
+                label: (ctx) => `Depth: ${ctx.parsed.x.toFixed(1)} ${uLen} · Temp: ${ctx.parsed.y} ${uTemp}`
               }
             }
           },
           scales: {
             x: {
               type: "linear",
-              title: { display: true, text: "Distance from hot face (in.)", font: { size: 11 } },
+              title: { display: true, text: `Distance from hot face (${uLen})`, font: { size: 11 } },
               grid: { display: false }
             },
             y: {
-              title: { display: true, text: "Temperature (°F)", font: { size: 11 } },
+              title: { display: true, text: `Temperature (${uTemp})`, font: { size: 11 } },
               grid: { display: false }
             }
           }
@@ -483,23 +578,22 @@
       const polys = layers.map(([, , pts]) => fitCubic(pts));
       const n = polys.length;
 
-      const t1 = parseFloat(document.getElementById("t1").value) || 0;
-      const t0 = parseFloat(document.getElementById("t0").value) || 0;
-      const wind = parseFloat(document.getElementById("wind").value) || 0;
-      const eps = parseFloat(document.getElementById("eps").value) || 0.8;
+      const { t1, t0, wind, eps, dims, thick } = stateUS;
 
-      const totalThick = currentThick.reduce((a, b) => a + b, 0);
-      if (["hcyl", "vcyl", "sphere"].includes(geom) && totalThick >= currentDims.D * 6) {
-        errorBox.textContent = `⚠️ Geometry Error: Total refractory thickness (${totalThick.toFixed(1)} in.) exceeds vessel inner radius (${currentDims.D * 6} in.).`;
+      const totalThick = thick.reduce((a, b) => a + b, 0);
+      if (["hcyl", "vcyl", "sphere"].includes(geom) && totalThick >= dims.D * 6) {
+        const dispThk = isSI ? `${(totalThick * IN_MM).toFixed(0)} mm` : `${totalThick.toFixed(1)} in.`;
+        const dispRad = isSI ? `${(dims.D * 6 * IN_MM).toFixed(0)} mm` : `${(dims.D * 6).toFixed(1)} in.`;
+        errorBox.textContent = `⚠️ Total refractory thickness (${dispThk}) exceeds vessel inner radius (${dispRad}).`;
         errorBox.classList.remove("hidden");
         return;
       }
 
       const x = [0];
-      currentThick.forEach((th) => x.push(x[x.length - 1] + th));
+      thick.forEach((th) => x.push(x[x.length - 1] + th));
       let xLocal = [...x];
       if (["hcyl", "vcyl", "sphere"].includes(geom)) {
-        const rOut = currentDims.D * 6;
+        const rOut = dims.D * 6;
         for (let i = 0; i < xLocal.length; i++) xLocal[i] = rOut - totalThick + xLocal[i];
       }
 
@@ -514,7 +608,7 @@
           if (geom === "sphere") return (xLocal[xLocal.length - 1] ** 2 * (xLocal[m + 1] - xLocal[m])) / (k * xLocal[m] * xLocal[m + 1]);
           return (xLocal[m + 1] - xLocal[m]) / k;
         });
-        hStats = hOut(t[t.length - 1], t0, eps, wind, geom, currentDims);
+        hStats = hOut(t[t.length - 1], t0, eps, wind, geom, dims);
         const Ro = 1 / hStats.hTot;
         q = (t1 - t0) / (R.reduce((a, b) => a + b, 0) + Ro);
 
@@ -526,9 +620,28 @@
         if (maxErr < 0.1) break;
       }
 
-      const ts = t[t.length - 1];
+      const ts = t[t.length - 1]; // US value used for status color thresholds
 
-      // Hero styling matching app2.py
+      // Display conversion functions matching app2.py
+      const U_T = isSI ? "°C" : "°F";
+      const U_DT = isSI ? "K" : "°F";
+      const U_LEN = isSI ? "mm" : "in.";
+      const U_Q = isSI ? "W/m²" : "Btu/(h·ft²)";
+      const U_QL = isSI ? "W/m" : "Btu/(h·ft)";
+      const U_H = isSI ? "W/(m²·K)" : "Btu/(h·ft²·°F)";
+      const U_K = isSI ? "W/(m·K)" : "Btu·in/(h·ft²·°F)";
+      const U_R = isSI ? "m²·K/W" : "h·ft²·°F/Btu";
+
+      const T = (f) => isSI ? (f - 32.0) / 1.8 : f;
+      const DT = (f) => isSI ? f / 1.8 : f;
+      const LEN = (inch) => isSI ? inch * IN_MM : inch;
+      const Q = (v) => isSI ? v * BTU_HFT2_TO_WM2 : v;
+      const QL = (v) => isSI ? v * BTU_HFT_TO_WM : v;
+      const HC = (v) => isSI ? v * H_TO_SI : v;
+      const KE = (v) => isSI ? v * K_TO_SI : v;
+      const RR = (v) => isSI ? v * R_TO_SI : v;
+
+      // Hero Banner
       const hero = document.getElementById("heroCard");
       let grad = "linear-gradient(135deg, #e4572e, #b83a17)";
       let status = "Hot shell";
@@ -540,37 +653,48 @@
         status = "Warm shell";
       }
       hero.style.background = grad;
-      document.getElementById("heroTemp").textContent = `${Math.round(ts)} °F`;
-      document.getElementById("heroSub").textContent = `${status} · ${ts - t0 >= 0 ? "+" : ""}${Math.round(ts - t0)} °F vs ambient`;
+      document.getElementById("heroTemp").textContent = `${Math.round(T(ts))} ${U_T}`;
+      const dTAmbient = Math.round(DT(ts - t0));
+      document.getElementById("heroSub").textContent = `${status} · ${dTAmbient >= 0 ? "+" : ""}${dTAmbient} ${U_DT} vs ambient`;
 
       // 2x2 Metric Grid
-      document.getElementById("kpiQ").textContent = Math.round(q).toLocaleString();
+      document.getElementById("kpiQ").textContent = Math.round(Q(q)).toLocaleString();
+      document.getElementById("kpiQUnit").textContent = U_Q;
+
       if (geom === "hcyl" || geom === "vcyl") {
         document.getElementById("kpi3Title").textContent = "Heat loss per length";
-        document.getElementById("kpi3Val").textContent = Math.round(Math.PI * currentDims.D * q).toLocaleString();
-        document.getElementById("kpi3Unit").textContent = "Btu/(h·ft) of length";
+        document.getElementById("kpi3Val").textContent = Math.round(QL(Math.PI * dims.D * q)).toLocaleString();
+        document.getElementById("kpi3Unit").textContent = `${U_QL} of length`;
       } else {
         document.getElementById("kpi3Title").textContent = "Lining thickness";
-        document.getElementById("kpi3Val").textContent = totalThick.toFixed(1);
-        document.getElementById("kpi3Unit").textContent = "inches";
+        document.getElementById("kpi3Val").textContent = isSI ? Math.round(LEN(totalThick)) : totalThick.toFixed(1);
+        document.getElementById("kpi3Unit").textContent = isSI ? "mm" : "inches";
       }
-      document.getElementById("kpiH").textContent = hStats.hTot.toFixed(2);
-      document.getElementById("kpiHrHc").textContent = `${hStats.hr.toFixed(1)} / ${hStats.hc.toFixed(1)}`;
 
-      // Layer Cards matching app2.py
+      document.getElementById("kpiH").textContent = HC(hStats.hTot).toFixed(2);
+      document.getElementById("kpiHUnit").textContent = U_H;
+      document.getElementById("kpiHrHc").textContent = `${HC(hStats.hr).toFixed(1)} / ${HC(hStats.hc).toFixed(1)}`;
+      document.getElementById("kpiHrHcUnit").textContent = U_H;
+
+      // Layer Cards
       const layerCards = document.getElementById("layerCards");
       layerCards.innerHTML = "";
       const names = layers.map(([n]) => n);
       layers.forEach(([name], i) => {
         const drop = t[i] - t[i + 1];
+        const thDisp = isSI ? Math.round(LEN(thick[i])) : thick[i];
+        const keDisp = KE(ke[i]).toFixed(isSI ? 3 : 2);
+        const rDisp = RR(R[i]).toFixed(isSI ? 4 : 3);
+        const rUnitDisp = isSI ? ` ${U_R}` : "";
+
         const card = document.createElement("div");
         card.className = "flex gap-2.5 bg-white border border-slate-200/80 rounded-2xl p-3 shadow-xs items-stretch";
         card.innerHTML = `
           <div class="w-1.5 rounded-full flex-none" style="background:${PALETTE[i % PALETTE.length]}"></div>
           <div class="flex-1 min-w-0">
-            <div class="font-bold text-sm text-slate-800">${name} · ${currentThick[i]} in.</div>
-            <div class="text-xs text-slate-600 mt-0.5">${Math.round(t[i])} °F → ${Math.round(t[i + 1])} °F &nbsp;<span class="text-slate-400 font-medium">(drop ${Math.round(drop)} °F)</span></div>
-            <div class="text-[0.72rem] text-slate-500 mt-1">k<sub>eff</sub> ${ke[i].toFixed(2)} Btu·in/(h·ft²·°F) · R ${R[i].toFixed(3)}</div>
+            <div class="font-bold text-sm text-slate-800">${name} · ${thDisp} ${U_LEN}</div>
+            <div class="text-xs text-slate-600 mt-0.5">${Math.round(T(t[i]))} ${U_T} → ${Math.round(T(t[i + 1]))} ${U_T} &nbsp;<span class="text-slate-400 font-medium">(drop ${Math.round(DT(drop))} ${U_DT})</span></div>
+            <div class="text-[0.72rem] text-slate-500 mt-1">k<sub>eff</sub> ${keDisp} ${U_K} · R ${rDisp}${rUnitDisp}</div>
           </div>
         `;
         layerCards.appendChild(card);
@@ -593,7 +717,7 @@
         const seg = document.createElement("div");
         seg.style.width = `${pct}%`;
         seg.style.background = dropColors[i];
-        seg.title = `${dropNames[i]}: ${Math.round(dVal)} °F`;
+        seg.title = `${dropNames[i]}: ${Math.round(DT(dVal))} ${U_DT}`;
         stackBar.appendChild(seg);
 
         const leg = document.createElement("span");
@@ -602,25 +726,74 @@
         stackLegend.appendChild(leg);
       });
 
-      // Benchmark Check Badge matching app2.py
+      // Benchmark Check Badge
       const checkDiv = document.getElementById("benchmarkCheck");
       if (currentPreset && !currentPreset.custom) {
         const ok = Math.abs(ts - currentPreset.expTs) <= 2 && Math.abs(q - currentPreset.expQ) <= 3;
-        checkDiv.innerHTML = `${ok ? "✅" : "⚠️"} Table A.8 target: ${currentPreset.expTs} °F · ${currentPreset.expQ} Btu/(h·ft²) &nbsp;|&nbsp; calculated: ${Math.round(ts)} °F · ${Math.round(q)}`;
+        checkDiv.innerHTML = `${ok ? "✅" : "⚠️"} Table A.8 target: ${Math.round(T(currentPreset.expTs))} ${U_T} · ${Math.round(Q(currentPreset.expQ))} ${U_Q} &nbsp;|&nbsp; calculated: ${Math.round(T(ts))} ${U_T} · ${Math.round(Q(q))}`;
       } else {
         checkDiv.innerHTML = "";
       }
 
       // Update Chart
-      updateChart(x, t, names, t0, t1, ts);
+      const edgesDisp = x.map(LEN);
+      const tDisp = t.map(T);
+      updateChart(edgesDisp, tDisp, names, U_LEN, U_T);
     }
 
-    // Event Listeners
+    // ==========================================
+    // 4. EVENT LISTENERS
+    // ==========================================
+    siToggle.addEventListener("change", (e) => {
+      isSI = e.target.checked;
+      syncAllInputsUI();
+      calculate();
+    });
+
     presetSelect.addEventListener("change", (e) => loadPreset(parseInt(e.target.value, 10)));
-    geomSelect.addEventListener("change", () => { renderDimInputs(); calculate(); });
-    liningSelect.addEventListener("change", () => { renderLayerInputs(); calculate(); });
-    ["t1", "t0", "wind", "eps"].forEach((id) => {
-      document.getElementById(id).addEventListener("input", () => calculate());
+
+    geomSelect.addEventListener("change", () => {
+      renderDimInputs();
+      calculate();
+    });
+
+    liningSelect.addEventListener("change", () => {
+      const [, layers] = LININGS[liningSelect.value];
+      stateUS.thick = layers.map(l => l[1]);
+      renderLayerInputs();
+      calculate();
+    });
+
+    document.getElementById("t1").addEventListener("input", (e) => {
+      const raw = parseFloat(e.target.value);
+      if (!isNaN(raw)) {
+        stateUS.t1 = isSI ? toUS.temp(raw) : raw;
+        calculate();
+      }
+    });
+
+    document.getElementById("t0").addEventListener("input", (e) => {
+      const raw = parseFloat(e.target.value);
+      if (!isNaN(raw)) {
+        stateUS.t0 = isSI ? toUS.temp(raw) : raw;
+        calculate();
+      }
+    });
+
+    document.getElementById("wind").addEventListener("input", (e) => {
+      const raw = parseFloat(e.target.value);
+      if (!isNaN(raw)) {
+        stateUS.wind = isSI ? toUS.wind(raw) : raw;
+        calculate();
+      }
+    });
+
+    document.getElementById("eps").addEventListener("input", (e) => {
+      const raw = parseFloat(e.target.value);
+      if (!isNaN(raw)) {
+        stateUS.eps = raw;
+        calculate();
+      }
     });
 
     // Initialize with Case 1
